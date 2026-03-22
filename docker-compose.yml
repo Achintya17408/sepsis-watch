@@ -1,0 +1,33 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: sepsis_db
+    environment:
+      POSTGRES_USER: sepsis_user
+      POSTGRES_PASSWORD: sepsis_pass_dev
+      POSTGRES_DB: sepsis_watch
+    ports:
+      - "5433:5432"   # mapped to 5433 on host to avoid conflict with local Postgres
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sepsis_user -d sepsis_watch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sepsis_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  timescale_data:

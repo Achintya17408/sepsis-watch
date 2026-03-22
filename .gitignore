@@ -1,0 +1,46 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment & secrets — NEVER commit
+.env
+.env.*
+
+# Raw data — too large for git (MIMIC-III CSVs etc.)
+data/raw/
+data/processed/
+
+# ML model weights — too large for git
+*.pt
+*.pth
+*.ckpt
+*.h5
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Alembic — keep migrations, skip pycache inside
+alembic/__pycache__/
