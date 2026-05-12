@@ -28,9 +28,16 @@ def init():
     )
     print("vital_readings converted to hypertable.")
 
+    # lab_results uses the same composite PK pattern (id, collected_at) as vital_readings.
+    # TimescaleDB partitions by collected_at, giving fast range queries for SOFA computation.
+    cur.execute(
+        "SELECT create_hypertable('lab_results', 'collected_at', if_not_exists => TRUE);"
+    )
+    print("lab_results converted to hypertable.")
+
     cur.close()
     conn.close()
-    print("Done.")
+    print("Done. Both vital_readings and lab_results are now TimescaleDB hypertables.")
 
 
 if __name__ == "__main__":

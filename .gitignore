@@ -13,6 +13,11 @@ build/
 # Environment & secrets — NEVER commit
 .env
 .env.*
+!.env.example
+
+# Celery beat schedule DB
+celerybeat-schedule.db
+celerybeat-schedule
 
 # Raw data — too large for git (MIMIC-III CSVs etc.)
 data/raw/

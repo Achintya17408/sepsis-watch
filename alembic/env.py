@@ -21,9 +21,20 @@ config.set_main_option("sqlalchemy.url", os.getenv("SYNC_DATABASE_URL"))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Import all models so autogenerate can detect them
+# Import all models so Alembic autogenerate detects them
 from app.db.base import Base  # noqa: E402
-from app.models import patient  # noqa: E402, F401
+from app.models.patient import (  # noqa: E402, F401
+    AlertNotification,
+    Comorbidity,
+    Doctor,
+    IcuAdmission,
+    LabResult,
+    MlModelVersion,
+    Patient,
+    SepsisAlert,
+    VitalReading,
+)
+from app.auth import APIUser  # noqa: E402, F401
 
 target_metadata = Base.metadata
 

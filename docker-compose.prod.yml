@@ -1,0 +1,128 @@
+# Production docker-compose — for self-hosted VPS (DigitalOcean, Hetzner, etc.)
+# Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# Requires these env vars set in shell or a .env.prod file:
+#   DB_PASSWORD, SECRET_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+#   TWILIO_WHATSAPP_FROM, DASHBOARD_ORIGIN
+#
+# Deploy: copy this file + .env.prod to your VPS and run docker compose up -d
+
+services:
+  # ── TimescaleDB ────────────────────────────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: sepsis_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: sepsis_watch
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sepsis_user -d sepsis_watch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # DB port NOT exposed externally in production
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── FastAPI API ────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sepsis_user:${DB_PASSWORD}@timescaledb:5432/sepsis_watch
+      SYNC_DATABASE_URL: postgresql://sepsis_user:${DB_PASSWORD}@timescaledb:5432/sepsis_watch
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM}
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      APP_ENV: production
+      ALLOWED_ORIGINS: ${DASHBOARD_ORIGIN:-https://your-dashboard.vercel.app}
+      PORT: 8000
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"   # expose behind your reverse proxy / nginx
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ── Celery worker ──────────────────────────────────────────────────────────
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A app.worker worker --loglevel=info --concurrency=2
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sepsis_user:${DB_PASSWORD}@timescaledb:5432/sepsis_watch
+      SYNC_DATABASE_URL: postgresql://sepsis_user:${DB_PASSWORD}@timescaledb:5432/sepsis_watch
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM}
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      APP_ENV: production
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery beat (scheduler) ────────────────────────────────────────────────
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A app.worker beat --loglevel=info --scheduler celery.schedulers:PersistentScheduler
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sepsis_user:${DB_PASSWORD}@timescaledb:5432/sepsis_watch
+      SYNC_DATABASE_URL: postgresql://sepsis_user:${DB_PASSWORD}@timescaledb:5432/sepsis_watch
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      APP_ENV: production
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - beat_data:/app/celerybeat
+
+volumes:
+  timescale_data:
+  redis_data:
+  beat_data:

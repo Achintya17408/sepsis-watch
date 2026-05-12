@@ -1,0 +1,29 @@
+# Railway deployment configuration
+# https://docs.railway.app/reference/config-as-code
+#
+# How to deploy:
+#   1. Push this repo to GitHub
+#   2. Go to railway.app → New Project → Deploy from GitHub repo
+#   3. Railway auto-detects the Dockerfile
+#   4. Add a TimescaleDB service: New → Database → Add PostgreSQL
+#      Then in the DB settings install the TimescaleDB extension:
+#      CREATE EXTENSION IF NOT EXISTS timescaledb;
+#   5. Add a Redis service: New → Database → Add Redis
+#   6. Set env vars (see .env.example) in the Railway dashboard
+#   7. Clone this service twice for celery_worker and celery_beat,
+#      overriding the start command in each.
+#
+# Start commands per service:
+#   API:          alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+#   Celery worker: celery -A app.worker worker --loglevel=info --concurrency=2
+#   Celery beat:   celery -A app.worker beat --loglevel=info
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

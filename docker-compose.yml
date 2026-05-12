@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: sepsis_pass_dev
       POSTGRES_DB: sepsis_watch
     ports:
-      - "5433:5432"   # mapped to 5433 on host to avoid conflict with local Postgres
+      - "5434:5432"   # mapped to 5434 on host to avoid conflict with local Postgres
     volumes:
       - timescale_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -28,6 +28,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── Celery worker: processes on-demand + periodic scoring tasks ──────────
+  celery_worker:
+    build: .
+    container_name: sepsis_celery_worker
+    command: celery -A app.worker worker --loglevel=info --concurrency=2
+    env_file: .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Celery beat: fires periodic tasks (every 15 min by default) ─────────
+  celery_beat:
+    build: .
+    container_name: sepsis_celery_beat
+    command: celery -A app.worker beat --loglevel=info
+    env_file: .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   timescale_data:
