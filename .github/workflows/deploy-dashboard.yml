@@ -36,9 +36,8 @@ jobs:
       - name: Build
         working-directory: dashboard
         env:
-          GITHUB_ACTIONS: true
-          # Point at Render backend — update VITE_API_URL once Render is live
-          VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://sepsis-watch-api.onrender.com' }}
+          GITHUB_ACTIONS: "true"
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: npm run build
 
       - uses: actions/upload-pages-artifact@v3
