@@ -8,12 +8,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Proxy /api/* → FastAPI during local dev
-      // (production uses VITE_API_URL env var in api.ts instead)
+      // Proxy /api/* → FastAPI during local dev (FastAPI now owns the /api prefix)
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

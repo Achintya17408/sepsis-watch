@@ -1,3 +1,14 @@
+# ── Stage 0: build React frontend ─────────────────────────────────────────────
+# Produces dashboard/dist/ which FastAPI serves as static files.
+# VITE_API_URL is intentionally empty — the app is served from the same origin
+# as the API, so all fetch calls use relative URLs (/api/...).
+FROM node:20-alpine AS frontend
+WORKDIR /dashboard
+COPY dashboard/package.json dashboard/package-lock.json ./
+RUN npm ci
+COPY dashboard/ ./
+RUN VITE_API_URL="" npm run build
+
 # ── Stage 1: build dependencies ───────────────────────────────────────────────
 FROM python:3.11-slim AS builder
 
@@ -36,6 +47,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY . .
+
+# Copy pre-built React frontend (served by FastAPI for single-URL access)
+COPY --from=frontend /dashboard/dist /app/dashboard/dist
 
 # Don't run as root in production
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
