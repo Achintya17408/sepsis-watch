@@ -2,7 +2,10 @@ from fastapi import FastAPI, Depends, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+import asyncio
+import logging
 import os
 import pathlib
 
@@ -12,7 +15,39 @@ from app.api import alerts, doctors, labs, patients, vitals, webhooks  # noqa: E
 from app.api.auth_router import router as auth_router  # noqa: E402
 from app.auth import get_current_user  # noqa: E402
 
+log = logging.getLogger(__name__)
+
+
+async def _keepalive_loop():
+    """
+    On Render free tier, services sleep after 15 min of inactivity.
+    Self-ping every 10 min prevents cold starts during active demos.
+    Only runs when APP_ENV=production and a PUBLIC_URL is set.
+    """
+    import httpx
+    url = os.getenv("PUBLIC_URL", "").rstrip("/") + "/health"
+    while True:
+        await asyncio.sleep(600)  # 10 minutes
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.get(url)
+            log.debug("Keepalive ping sent to %s", url)
+        except Exception:
+            pass  # non-critical
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if os.getenv("APP_ENV") == "production" and os.getenv("PUBLIC_URL"):
+        task = asyncio.create_task(_keepalive_loop())
+    else:
+        task = None
+    yield
+    if task:
+        task.cancel()
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Sepsis Watch API",
     description=(
         "Real-time ICU sepsis early warning system — Indian hospital market.\n\n"

@@ -1,36 +1,44 @@
 # Render deployment config — render.yaml
 # https://render.com/docs/blueprint-spec
 #
-# How to deploy:
-#   1. Push repo to GitHub
-#   2. Go to dashboard.render.com → New → Blueprint
-#   3. Connect the repo — Render reads this file automatically
-#   4. Set secret env vars in the Render dashboard (DB_PASSWORD, SECRET_KEY, etc.)
+# FREE TIER DEPLOYMENT (no credit card required):
+#   Database : Supabase free tier  → https://supabase.com  (signup with GitHub)
+#   Redis    : Upstash free tier   → https://upstash.com   (signup with GitHub)
+#   Hosting  : Render free tier    → https://render.com    (signup with GitHub)
 #
-# NOTE: Render's managed Postgres doesn't include TimescaleDB. Use the "Docker"
-# database type below which runs the official timescale image, OR sign up for a
-# free Timescale Cloud trial at https://console.cloud.timescale.com/
+# Setup steps:
+#   1. Create a Supabase project → Settings → Database → copy "Connection string (URI)"
+#      Change postgres:// to postgresql+asyncpg:// for DATABASE_URL
+#      Keep postgres:// as-is for SYNC_DATABASE_URL
+#      In Supabase SQL editor run: CREATE EXTENSION IF NOT EXISTS timescaledb;
+#   2. Create an Upstash Redis database → copy the Redis URL
+#   3. Push this repo to GitHub
+#   4. Go to dashboard.render.com → New → Blueprint → connect repo
+#   5. Set the env vars below marked sync: false in the Render dashboard
+#
+# NOTE: Render free tier sleeps after 15 min of inactivity.
+#       First request after sleep takes ~30s. Acceptable for demos.
 
 services:
-  # ── FastAPI API ────────────────────────────────────────────────────────────
+  # ── FastAPI API + React SPA ────────────────────────────────────────────────
+  # Serves both the API (/api/*) and the React frontend (/)
   - type: web
     name: sepsis-watch-api
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
+      # Supabase DB — set these in Render dashboard after creating Supabase project
       - key: DATABASE_URL
-        value: postgresql+asyncpg://sepsis_user:${DB_PASSWORD}@${DB_HOST}:5432/sepsis_watch
+        sync: false   # postgresql+asyncpg://postgres:[password]@db.[ref].supabase.co:5432/postgres
       - key: SYNC_DATABASE_URL
-        value: postgresql://sepsis_user:${DB_PASSWORD}@${DB_HOST}:5432/sepsis_watch
+        sync: false   # postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
+      # Upstash Redis — set in Render dashboard after creating Upstash DB
       - key: REDIS_URL
-        fromService:
-          name: sepsis-watch-redis
-          type: redis
-          property: connectionString
+        sync: false   # rediss://default:[password]@[host].upstash.io:6379
       - key: SECRET_KEY
-        sync: false   # set manually in Render dashboard
+        sync: false   # generate with: python -c "import secrets; print(secrets.token_hex(32))"
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
@@ -38,60 +46,16 @@ services:
       - key: TWILIO_WHATSAPP_FROM
         sync: false
       - key: GROQ_API_KEY
-        sync: false   # get free key at console.groq.com
+        sync: false   # free at console.groq.com
       - key: GROQ_MODEL
         value: llama-3.1-8b-instant
       - key: ANTHROPIC_API_KEY
-        sync: false   # optional — fallback if Groq not set
+        sync: false   # optional
       - key: APP_ENV
         value: production
-
-  # ── Celery worker ──────────────────────────────────────────────────────────
-  - type: worker
-    name: sepsis-watch-celery-worker
-    env: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: celery -A app.worker worker --loglevel=info --concurrency=2
-    plan: starter
-    envVars:
-      - key: DATABASE_URL
-        value: postgresql+asyncpg://sepsis_user:${DB_PASSWORD}@${DB_HOST}:5432/sepsis_watch
-      - key: SYNC_DATABASE_URL
-        value: postgresql://sepsis_user:${DB_PASSWORD}@${DB_HOST}:5432/sepsis_watch
-      - key: REDIS_URL
-        fromService:
-          name: sepsis-watch-redis
-          type: redis
-          property: connectionString
-      - key: SECRET_KEY
+      - key: ALLOWED_ORIGINS
+        value: '*'
+      # Self-ping every 10 min to prevent free-tier sleep during demos
+      # Set this to your Render URL after first deploy e.g. https://sepsis-watch-api.onrender.com
+      - key: PUBLIC_URL
         sync: false
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_WHATSAPP_FROM
-        sync: false
-      - key: APP_ENV
-        value: production
-
-  # ── Celery beat ────────────────────────────────────────────────────────────
-  - type: worker
-    name: sepsis-watch-celery-beat
-    env: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: celery -A app.worker beat --loglevel=info
-    plan: starter
-    envVars:
-      - key: REDIS_URL
-        fromService:
-          name: sepsis-watch-redis
-          type: redis
-          property: connectionString
-      - key: APP_ENV
-        value: production
-
-  # ── Redis ──────────────────────────────────────────────────────────────────
-  - type: redis
-    name: sepsis-watch-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
